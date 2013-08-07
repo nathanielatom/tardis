@@ -810,6 +810,7 @@ class TARDISConfiguration(TARDISConfigurationNameSpace):
 
 
         else:
+            t_inner_update_exponent = None
             lock_t_inner_cycles = None
             logger.warning('No convergence criteria selected - just damping by 0.5 for w, t_rad and t_inner')
             convergence_config_dict['type'] = 'damped'
