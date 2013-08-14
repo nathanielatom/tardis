@@ -1,6 +1,8 @@
 # Utilities for TARDIS
 
 from astropy import units as u, constants
+from numbapro import autojit, int64, float64, float32
+from numbapro.decorators import jit
 import numpy as np
 import os
 import yaml
@@ -203,7 +205,6 @@ def create_synpp_yaml(radial1d_mdl, fname, shell_no=0, lines_db=None):
 
     yaml.dump(yaml_reference, stream=file(fname, 'w'), explicit_start=True)
 
-
 def intensity_black_body(nu, T):
     """
         Calculate the intensity of a black-body according to the following formula
@@ -212,10 +213,28 @@ def intensity_black_body(nu, T):
             I(\\nu, T) = \\frac{2h\\nu^3}{c^2}\frac{1}{e^{h\\nu \\beta_\\textrm{rad}} - 1}
 
     """
-    beta_rad = 1 / (k_B_cgs * T)
+    if type(T) != float:
+        if len(nu.shape) == 2:
+            return vectorized_intensity_black_body(nu, T)
+        elif len(nu.shape) == 1:
+            return semi_vectorized_intensity_black_body(nu, T)
+    else:
+        return other_semi_vectorized_intensity_black_body(nu, T)
 
+@jit(float64[:, :](float64[:, :], float64[:]))
+def vectorized_intensity_black_body(nu, T):
     return (2 * (h_cgs * nu ** 3) / (c_cgs ** 2)) / (
-        np.exp(h_cgs * nu * beta_rad) - 1)
+        np.exp(h_cgs * nu * (1 / (k_B_cgs * T))) - 1)
+
+@jit(float64[:](float64[:], float64))
+def semi_vectorized_intensity_black_body(nu, T):
+    return (2 * (h_cgs * nu ** 3) / (c_cgs ** 2)) / (
+        np.exp(h_cgs * nu * (1 / (k_B_cgs * T))) - 1)
+
+@jit(float64[:](float64[:], float32))
+def other_semi_vectorized_intensity_black_body(nu, T):
+    return (2 * (h_cgs * nu ** 3) / (c_cgs ** 2)) / (
+        np.exp(h_cgs * nu * (1 / (k_B_cgs * T))) - 1)
 
 def savitzky_golay(y, window_size, order, deriv=0, rate=1):
     r"""Smooth (and optionally differentiate) data with a Savitzky-Golay filter.

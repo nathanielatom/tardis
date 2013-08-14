@@ -1,9 +1,11 @@
 #Calculations of the Plasma conditions
 import numpy as np
+from numbapro import autojit, int64, float64
+from numbapro.decorators import jit
 import logging
 from astropy import constants
 import pandas as pd
-import os, time
+import os
 from scipy import interpolate
 
 from tardis import macro_atom, config_reader
@@ -20,6 +22,15 @@ e_charge_gauss = constants.e.gauss.value
 #Defining sobolev constant
 sobolev_coefficient = ((np.pi * e_charge_gauss ** 2) / ( m_e_cgs * c_cgs))
 
+@jit(float64[:, :](int64[:], float64[:], float64[:]))
+def calculate_level_population_proportionalities(level_g, level_energy, beta_rads):
+    level_population_proportional_array = level_g[np.newaxis].T *\
+                                              np.exp(np.outer(level_energy, -beta_rads))
+    return level_population_proportional_array
+
+@jit(float64[:, :](int64[:], int64[:], float64[:, :], float64[:, :]))
+def calculate_stimulated_emission_factor(g_lower, g_upper, n_lower, n_upper):
+    return 1 - ((g_lower[np.newaxis].T * n_upper) / (g_upper[np.newaxis].T * n_lower))
 
 class PlasmaException(Exception):
     pass
@@ -39,7 +50,6 @@ def intensity_black_body(nu, T):
 
     return (2 * (h_cgs * nu ** 3) / (c_cgs ** 2)) / (
         np.exp(h_cgs * nu * beta_rad) - 1)
-
 
 class BasePlasmaArray(object):
     """
@@ -182,7 +192,6 @@ class BasePlasmaArray(object):
 
 
     #Functions
-
     def update_radiationfield(self, t_rads, ws, j_blues=None, t_electrons=None, n_e_convergence_threshold=0.05,
                               initialize_nlte=False):
         """
@@ -243,7 +252,6 @@ class BasePlasmaArray(object):
             self.calculate_nlte_level_populations()
 
 
-
     def calculate_partition_functions(self, initialize_nlte=False):
         """
         Calculate partition functions for the ions using the following formula, where
@@ -268,8 +276,8 @@ class BasePlasmaArray(object):
 
         levels = self.atom_data.levels
 
-        level_population_proportional_array = levels.g.values[np.newaxis].T *\
-                                              np.exp(np.outer(levels.energy.values, -self.beta_rads))
+        # level_population_proportional_array = levels.g.values[np.newaxis].T * np.exp(np.outer(levels.energy.values, -self.beta_rads))
+        level_population_proportional_array = calculate_level_population_proportionalities(levels.g.values, levels.energy.values, self.beta_rads)
         level_population_proportionalities = pd.DataFrame(level_population_proportional_array,
                                                                index=self.atom_data.levels.index,
                                                                columns=np.arange(len(self.t_rads)), dtype=np.float64)
@@ -431,8 +439,6 @@ class BasePlasmaArray(object):
         return pd.DataFrame(radiation_field_correction, columns=np.arange(len(self.t_rads)),
                             index=ionization_data.index)
 
-
-
     def calculate_ion_populations(self, phis, ion_zero_threshold=1e-20):
         """
         Calculate the ionization balance
@@ -495,7 +501,7 @@ class BasePlasmaArray(object):
         else:
             self.level_populations.update(level_populations[~self.atom_data.nlte_data.nlte_levels_mask])
 
-
+    @autojit
     def calculate_nlte_level_populations(self):
         """
         Calculating the NLTE level populations for specific ions
@@ -569,7 +575,6 @@ class BasePlasmaArray(object):
 
             return
 
-
     def calculate_tau_sobolev(self):
         """
         This function calculates the Sobolev optical depth :math:`\\tau_\\textrm{Sobolev}`
@@ -590,6 +595,7 @@ class BasePlasmaArray(object):
 
 
         """
+
         f_lu = self.atom_data.lines['f_lu'].values
         wavelength = self.atom_data.lines['wavelength_cm'].values
 
@@ -599,8 +605,7 @@ class BasePlasmaArray(object):
         g_lower = self.atom_data.levels.g.values.take(self.atom_data.lines_lower2level_idx, axis=0, mode='raise')
         g_upper = self.atom_data.levels.g.values.take(self.atom_data.lines_upper2level_idx, axis=0, mode='raise')
 
-
-        self.stimulated_emission_factor = 1 - ((g_lower[np.newaxis].T * n_upper) / (g_upper[np.newaxis].T * n_lower))
+        self.stimulated_emission_factor = calculate_stimulated_emission_factor(g_lower, g_upper, n_lower, n_upper)
         # getting rid of the obvious culprits
         self.stimulated_emission_factor[n_lower == 0.0] = 0.0
         self.stimulated_emission_factor[np.isneginf(self.stimulated_emission_factor)] = 0.0
@@ -613,13 +618,9 @@ class BasePlasmaArray(object):
                                    (self.atom_data.lines.ion_number == species[1])
             self.stimulated_emission_factor[(self.stimulated_emission_factor < 0) & nlte_lines_mask[np.newaxis].T] = 0.0
 
-
         tau_sobolevs = sobolev_coefficient * f_lu[np.newaxis].T * wavelength[np.newaxis].T * self.time_explosion * \
                        n_lower * self.stimulated_emission_factor
         return pd.DataFrame(tau_sobolevs, index=self.atom_data.lines.index, columns=np.arange(len(self.t_rads)))
-
-
-
 
     def calculate_transition_probabilities(self):
         """
@@ -649,7 +650,6 @@ class BasePlasmaArray(object):
         return pd.DataFrame(transition_probabilities, index=macro_atom_data.transition_line_id,
                      columns=self.tau_sobolevs.columns)
 
-
     def calculate_bound_free(self):
         #TODO DOCUMENTATION missing!!!
         """
@@ -671,7 +671,6 @@ class BasePlasmaArray(object):
                 level_number = level.name[2]
                 sigma_bf_th = self.atom_data.ion_cx_th.ix[atomic_number, ion_number, level_number]
                 phi = phis.ix[atomic_number, ion_number]
-
 
     def to_hdf5(self, hdf5_store, path, mode='full'):
         """
