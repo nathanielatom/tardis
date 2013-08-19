@@ -430,11 +430,7 @@ class BasePlasmaArray(object):
         radiation_field_correction = -np.ones((len(ionization_data), len(self.beta_rads)))
         less_than_chi_0 = (ionization_data.ionization_energy < chi_0).values
 
-        radiation_field_correction = (self.t_electrons / (departure_coefficient * self.ws * self.t_rads)) *\
-                                     np.exp(self.beta_rads * chi_threshold - np.outer(
-                                            ionization_data.ionization_energy.values, self.beta_electrons))
         factor_a =  (self.t_electrons / (departure_coefficient * self.ws * self.t_rads))
-
         radiation_field_correction[~less_than_chi_0] = factor_a * \
                                      np.exp(np.outer(ionization_data.ionization_energy.values[~less_than_chi_0],
                                                      self.beta_rads - self.beta_electrons))
