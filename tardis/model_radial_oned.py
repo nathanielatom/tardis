@@ -1,20 +1,20 @@
 # building of radial_oned_model
 
-import numpy as np
-from tardis import packet_source, plasma_array
 import logging
-
-import pandas as pd
-from pandas import HDFStore
-from astropy import constants, units as u
-import montecarlo_multizone
 import os
 import re
 import itertools
+
+import numpy as np
+import pandas as pd
+from pandas import HDFStore
+from astropy import constants, units as u
 import scipy.special
 
-
+from tardis import packet_source, plasma_array
+import montecarlo_multizone
 from util import intensity_black_body
+
 
 logger = logging.getLogger(__name__)
 
@@ -436,8 +436,13 @@ class Radial1DModel(object):
         ws_path = os.path.join(path, 'ws')
         pd.Series(self.ws).to_hdf(hdf_store, ws_path)
 
-        t_inner_path = os.path.join(path, 't_inner')
-        pd.Series([self.t_inner.value]).to_hdf(hdf_store, t_inner_path)
+
+        configuration_dict = dict(t_inner=self.t_inner.value)
+
+
+        configuration_dict_path = os.path.join(path, 'configuration')
+        pd.Series(configuration_dict).to_hdf(hdf_store, configuration_dict_path)
+
 
         electron_densities_path = os.path.join(path, 'electron_densities')
         pd.Series(self.plasma_array.electron_densities).to_hdf(hdf_store, electron_densities_path)
@@ -450,6 +455,13 @@ class Radial1DModel(object):
 
         last_line_interaction_shell_id_path = os.path.join(path, 'last_line_interaction_shell_id')
         pd.Series(self.last_line_interaction_shell_id).to_hdf(hdf_store, last_line_interaction_shell_id_path)
+
+        montecarlo_nus_path = os.path.join(path, 'montecarlo_nus_path')
+        pd.Series(self.montecarlo_nu.value).to_hdf(hdf_store, montecarlo_nus_path)
+
+        montecarlo_luminosity_path = os.path.join(path, 'montecarlo_energies_path')
+        pd.Series(self.montecarlo_luminosity).to_hdf(hdf_store, montecarlo_luminosity_path)
+
 
         luminosity_density = pd.DataFrame.from_dict(dict(wave=self.spectrum.wavelength.value,
                                                          flux=self.spectrum.luminosity_density_lambda.value))
@@ -506,7 +518,7 @@ class TARDISHistory(object):
             level_populations_dict[current_iter] = hdf_store['model%03d/level_populations' % iter]
             ion_populations_dict[current_iter] = hdf_store['model%03d/ion_populations' % iter]
             j_blues_dict[current_iter] = hdf_store['model%03d/j_blues' %iter]
-            history.t_inner.append(hdf_store['model%03d/t_inner' %iter][0])
+            history.t_inner.append(hdf_store['model%03d/configuration' %iter].ix['t_inner'])
 
             for index in ion_populations_dict[current_iter].index:
                 level_populations_dict[current_iter].ix[index].update(level_populations_dict[current_iter].ix[index] /
